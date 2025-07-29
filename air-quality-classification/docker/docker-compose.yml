@@ -1,0 +1,14 @@
+services:
+  air-quality-classification:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: air_quality_classification
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    ports:
+      - "1111:1111"
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python train.py
