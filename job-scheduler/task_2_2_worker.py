@@ -13,12 +13,15 @@ class JobWorker:
         self,
         server_host: str = "localhost",
         server_port: int = 8000,
-        max_timestamp="00:00:19",
+        max_timestamp="01:04:37",
+        capacity: int = 15,
     ):
         self.server_host = server_host
         self.server_port = server_port
 
+        self.capacity = capacity
         self.active_tasks: Dict[int, List[Task]] = {}  # job_id -> list of tasks
+        self.job_priorities: Dict[int, str] = {}  # job_id -> priority
         self.execution_log: List[
             Tuple[str, List[Tuple[int, int, int]], int]
         ] = []  # [(timestamp, task_status, total_points)]
@@ -54,6 +57,14 @@ class JobWorker:
             tasks.append(Task(job_id, i, points))
 
         self.active_tasks[job_id] = tasks
+        self.job_priorities[job_id] = job_data.priority  # Store the job's priority
+
+    def _get_sorted_jobs(self):
+        """Sort jobs by priority (High before Low)."""
+        return sorted(
+            list(self.active_tasks.items()),
+            key=lambda x: self.job_priorities[x[0]] != "High",  # High priority first
+        )
 
     def process_tasks(self):
         """Process all active tasks and record their status."""
@@ -61,26 +72,34 @@ class JobWorker:
         task_status = OrderedDict()
         executing_points = 0
 
-        # Process each job's tasks
-        for job_id, tasks in list(self.active_tasks.items()):
+        # Process each job's tasks, sorted by priority
+        for job_id, tasks in self._get_sorted_jobs():
             if not tasks:
                 del self.active_tasks[job_id]
+                del self.job_priorities[job_id]
                 continue
 
             current_task = tasks[0]
             if current_task.remaining_points > 0:
-                status = (
-                    job_id,
-                    current_task.task_number,
-                    current_task.remaining_points,
-                )
-                task_status[job_id] = status
-                executing_points += current_task.remaining_points
-                current_task.remaining_points -= 1
+                if (executing_points + current_task.remaining_points) <= self.capacity:
+                    status = (
+                        job_id,
+                        current_task.task_number,
+                        current_task.remaining_points,
+                    )
+                    task_status[job_id] = status
+                    executing_points += current_task.remaining_points
+                    current_task.remaining_points -= 1
 
-                # If task is complete, remove it and move to next
-                if current_task.remaining_points == 0:
-                    tasks.pop(0)
+                    # If task is complete, remove it and move to next
+                    if current_task.remaining_points == 0:
+                        tasks.pop(0)
+                        if not tasks:  # If no more tasks for this job
+                            del self.active_tasks[job_id]
+                            del self.job_priorities[job_id]
+                else:
+                    print(f"Capacity exceeded for job {job_id}. Skipping processing.")
+                    continue
 
         # Log the current state
         self.execution_log.append(
@@ -143,9 +162,9 @@ class JobWorker:
 
 
 def main():
-    worker = JobWorker(max_timestamp="01:04:37")
+    worker = JobWorker(capacity=15)
     worker.run_simulation()
-    worker.save_execution_chart(filename="plot/task_1_2_execution_chart.md")
+    worker.save_execution_chart(filename="plot/task_2_2_execution_chart.md")
 
 
 if __name__ == "__main__":
